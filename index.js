@@ -5,8 +5,8 @@ const {
   downloadContentFromMessage
 } = require('@whiskeysockets/baileys')
 
+const ffmpegPath = require('ffmpeg-static')
 const fs = require('fs')
-const { exec } = require('child_process')
 const P = require('pino')
 const qrcode = require('qrcode-terminal')
 const yts = require('yt-search')
@@ -127,41 +127,45 @@ async function startBot() {
     }
 
     // SOLO PRIVADO - PLAY
-    if (!isGroup && command === 'play') {
-      if (!args.length) return reply('❌ Escribe el nombre de la canción')
+if (!isGroup && command === 'play') {
+  if (!args.length) return reply('❌ Escribe el nombre de la canción')
 
-      await reply('🎵 Buscando canción...')
+  await reply('🎵 Buscando canción...')
 
-      try {
-        const search = await yts(args.join(' '))
-        const video = search.videos[0]
+  try {
+    const search = await yts(args.join(' '))
+    const video = search.videos[0]
 
-        if (!video) return reply('❌ No encontré resultados')
-        if (video.seconds > 480) return reply('⏱️ Máximo 8 minutos')
+    if (!video) return reply('❌ No encontré resultados')
+    if (video.seconds > 480) return reply('⏱️ Máximo 8 minutos')
 
-        await reply(`🎶 Descargando:\n${video.title}`)
+    await reply(`🎶 Descargando:\n${video.title}`)
 
-        const file = `audio_${Date.now()}.mp3`
-        const cmd = `"./yt-dlp.exe" -x --audio-format mp3 -o "${file}" "${video.url}"`
+    const file = path.join(tmpdir(), `audio_${Date.now()}.mp3`)
 
-        exec(cmd, async (error) => {
-          if (error) {
-            console.log(error)
-            return reply('❌ Error al descargar la canción')
-          }
+    const stream = ytdl(video.url, {
+      filter: 'audioonly',
+      quality: 'highestaudio'
+    })
 
-          await sock.sendMessage(from, {
-            audio: fs.readFileSync(file),
-            mimetype: 'audio/mpeg'
-          })
+    const writeStream = fs.createWriteStream(file)
+    stream.pipe(writeStream)
 
-          fs.unlinkSync(file)
-        })
-      } catch (err) {
-        console.log(err)
-        return reply('❌ Falló la descarga')
-      }
-    }
+    writeStream.on('finish', async () => {
+      await sock.sendMessage(from, {
+        audio: fs.readFileSync(file),
+        mimetype: 'audio/mpeg'
+      })
+
+      fs.unlinkSync(file)
+    })
+
+  } catch (err) {
+    console.error(err)
+    return reply('❌ Falló la descarga')
+  }
+}
+
 
      // COMANDO STICKER (.sticker)
 if (command === 'sticker') {
@@ -189,17 +193,17 @@ if (command === 'sticker') {
 
       // Convertir con ffmpeg
       await new Promise((resolve, reject) => {
-        const ffmpeg = spawn('ffmpeg', [
-          '-i', inputFile,
-          '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,fps=15',
-          '-vcodec', 'libwebp',
-          '-lossless', '1',
-          '-preset', 'default',
-          '-an',
-          '-vsync', '0',
-          '-s', '512:512',
-          outputFile
-        ])
+        const ffmpeg = spawn(ffmpegPath, [
+  '-i', inputFile,
+  '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,fps=15',
+  '-vcodec', 'libwebp',
+  '-lossless', '1',
+  '-preset', 'default',
+  '-an',
+  '-vsync', '0',
+  outputFile
+])
+
 
         ffmpeg.on('close', (code) => {
           if (code === 0) resolve()
@@ -295,3 +299,4 @@ if (command === 'sticker') {
 }
 
 startBot()
+
